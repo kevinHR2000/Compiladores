@@ -1,0 +1,10 @@
+# Claude Code (configuración local, no del proyecto)
+.claude/
+
+# Binarios y objetos generados por la compilación
+*.exe
+*.o
+*.obj
+
+# Logs de build
+build.log

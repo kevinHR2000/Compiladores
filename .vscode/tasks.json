@@ -7,9 +7,11 @@
             "args": [
                 "-fdiagnostics-color=always",
                 "-g",
-                "${file}",
+                "${fileDirname}\\Main.cpp",
+                "${fileDirname}\\Lexer.cpp",
+                "${fileDirname}\\SymbolTable.cpp",
                 "-o",
-                "${fileDirname}\\${fileBasenameNoExtension}.exe"
+                "${fileDirname}\\Main.exe"
             ],
             "options": {
                 "cwd": "${fileDirname}"

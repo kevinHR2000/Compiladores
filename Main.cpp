@@ -1,6 +1,8 @@
-#include "Lexer.cpp"
+#include "Lexer.h"
 #include <iostream>
 #include <string>
+
+using namespace std;
 
 int main(int argc, char* argv[]) {
     Lexer lexer;
@@ -10,23 +12,35 @@ int main(int argc, char* argv[]) {
             return 1;
         }
     } else {
-        std::string input((std::istreambuf_iterator<char>(std::cin)),
-                           std::istreambuf_iterator<char>());
+        string input((istreambuf_iterator<char>(cin)),
+                      istreambuf_iterator<char>());
         lexer.setSource(input);
     }
 
-    std::cout << "TIPO\t\tLEXEMA\t\tLINEA\tCOLUMNA" << std::endl;
-    std::cout << "----------------------------------------------------" << std::endl;
+    cout << "===== LISTA DE TOKENS =====" << endl;
+    cout << "TIPO\t\tLEXEMA\t\tLINEA\tCOL\tTOKEN" << endl;
+    cout << "---------------------------------------------------------" << endl;
 
     Token token = lexer.getNextToken();
     while (token.type != TOKEN_EOF) {
-        std::cout << token.getTypeString() << "\t\t"
-                  << token.lexeme << "\t\t"
-                  << token.line << "\t"
-                  << token.column << std::endl;
+        cout << token.getTypeString() << "\t\t"
+             << token.lexeme << "\t\t"
+             << token.line << "\t"
+             << token.column << "\t";
+
+        if (token.type == TOKEN_ID) {
+            cout << "<ID," << token.attribute << ">";
+        } else {
+            cout << "<" << token.getTypeString() << ">";
+        }
+        cout << endl;
+
         token = lexer.getNextToken();
     }
 
-    std::cout << "EOF\t\t\t\t" << token.line << "\t" << token.column << std::endl;
+    cout << "EOF\t\t\t\t" << token.line << "\t" << token.column << endl;
+
+    lexer.getSymbolTable().print();
+
     return 0;
 }

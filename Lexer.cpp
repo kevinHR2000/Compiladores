@@ -1,16 +1,36 @@
 #include "Lexer.h"
 #include <cctype>
 
-Lexer::Lexer() : source(""), cursor(0), currentLine(1), currentColumn(1) {}
+using namespace std;
 
-bool Lexer::loadFile(const std::string& filepath) {
-    std::ifstream file(filepath);
+Lexer::Lexer() : source(""), cursor(0), currentLine(1), currentColumn(1) {
+    initKeywords();
+}
+
+void Lexer::initKeywords() {
+    keywords["int"]     = TOKEN_INT;
+    keywords["float"]   = TOKEN_FLOAT;
+    keywords["char"]    = TOKEN_CHAR;
+    keywords["boolean"] = TOKEN_BOOLEAN;
+    keywords["void"]    = TOKEN_VOID;
+    keywords["if"]      = TOKEN_IF;
+    keywords["else"]    = TOKEN_ELSE;
+    keywords["for"]     = TOKEN_FOR;
+    keywords["while"]   = TOKEN_WHILE;
+    keywords["scanf"]   = TOKEN_SCANF;
+    keywords["println"] = TOKEN_PRINTLN;
+    keywords["main"]    = TOKEN_MAIN;
+    keywords["return"]  = TOKEN_RETURN;
+}
+
+bool Lexer::loadFile(const string& filepath) {
+    ifstream file(filepath);
     if (!file.is_open()) {
-        std::cerr << "Error al abrir el archivo: " << filepath << std::endl;
+        cerr << "Error al abrir el archivo: " << filepath << endl;
         return false;
     }
-    std::string content((std::istreambuf_iterator<char>(file)),
-                         std::istreambuf_iterator<char>());
+    string content((istreambuf_iterator<char>(file)),
+                    istreambuf_iterator<char>());
     source = content;
     cursor = 0;
     currentLine = 1;
@@ -19,7 +39,7 @@ bool Lexer::loadFile(const std::string& filepath) {
     return true;
 }
 
-void Lexer::setSource(const std::string& input) {
+void Lexer::setSource(const string& input) {
     source = input;
     cursor = 0;
     currentLine = 1;
@@ -38,11 +58,15 @@ char Lexer::advance() {
     return c;
 }
 
+const SymbolTable& Lexer::getSymbolTable() const {
+    return symbols;
+}
+
 Token Lexer::getNextToken() {
     while (peek() != '\0') {
         char c = peek();
 
-        // Manejo de saltos de línea y espacios en blanco
+        // Saltos de linea y espacios
         if (c == '\n') {
             currentLine++;
             currentColumn = 1;
@@ -56,32 +80,62 @@ Token Lexer::getNextToken() {
 
         int startColumn = currentColumn;
 
-        // Reconocimiento de NUM_INT (D+) y NUM_DEC (D+.D+) según ER
-        if (std::isdigit(c)) {
+        // NUM_INT (D+) y NUM_DEC (D+.D+)
+        if (isdigit(static_cast<unsigned char>(c))) {
             size_t start = cursor;
-
-            while (std::isdigit(peek())) {
-                advance();
-            }
+            while (isdigit(static_cast<unsigned char>(peek()))) advance();
 
             bool isDecimal = false;
-            // Verificar si hay un punto seguido de al menos un dígito
-            if (peek() == '.' && (cursor + 1 < source.length()) && std::isdigit(source[cursor + 1])) {
+            if (peek() == '.' && (cursor + 1 < source.length())
+                && isdigit(static_cast<unsigned char>(source[cursor + 1]))) {
                 isDecimal = true;
-                advance(); // Consumir '.'
-                while (std::isdigit(peek())) {
-                    advance();
-                }
+                advance();
+                while (isdigit(static_cast<unsigned char>(peek()))) advance();
             }
 
-            std::string lexeme = source.substr(start, cursor - start);
-            return {isDecimal ? TOKEN_NUM_DEC : TOKEN_NUM_INT, lexeme, currentLine, startColumn};
+            string lexeme = source.substr(start, cursor - start);
+            return {isDecimal ? TOKEN_NUM_DEC : TOKEN_NUM_INT,
+                    lexeme, currentLine, startColumn, -1};
         }
 
-        // Para la fase del 15/09, cualquier otro carácter se avanza y marca como desconocido
-        std::string lexeme(1, advance());
-        return {TOKEN_DESCONOCIDO, lexeme, currentLine, startColumn};
+        // ID (L(L|D)*) y palabras reservadas -- L = [a-zA-Z_]
+        if (isalpha(static_cast<unsigned char>(c)) || c == '_') {
+            size_t start = cursor;
+            while (isalnum(static_cast<unsigned char>(peek())) || peek() == '_') {
+                advance();
+            }
+            string lexeme = source.substr(start, cursor - start);
+
+            auto it = keywords.find(lexeme);
+            if (it != keywords.end()) {
+                return {it->second, lexeme, currentLine, startColumn, -1};
+            }
+
+            int pos = symbols.insert(lexeme);
+            return {TOKEN_ID, lexeme, currentLine, startColumn, pos};
+        }
+
+        // TEXTO ".*"
+        if (c == '"') {
+            size_t start = cursor;
+            advance(); // consumir "
+            while (peek() != '"' && peek() != '\n' && peek() != '\0') {
+                advance();
+            }
+            if (peek() == '"') {
+                advance(); // consumir " de cierre
+                string lexeme = source.substr(start, cursor - start);
+                return {TOKEN_TEXTO, lexeme, currentLine, startColumn, -1};
+            }
+            // cadena sin cierre -> error lexico
+            string lexeme = source.substr(start, cursor - start);
+            return {TOKEN_DESCONOCIDO, lexeme, currentLine, startColumn, -1};
+        }
+
+        // Cualquier otro caracter: aun no procesado en esta fase
+        string lexeme(1, advance());
+        return {TOKEN_DESCONOCIDO, lexeme, currentLine, startColumn, -1};
     }
 
-    return {TOKEN_EOF, "", currentLine, currentColumn};
+    return {TOKEN_EOF, "", currentLine, currentColumn, -1};
 }
