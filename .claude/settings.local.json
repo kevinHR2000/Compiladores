@@ -1,5 +1,5 @@
 {
-  "permissions": {
+  "permissions": {      
     "allow": [
       "Bash(g++ -g src/Main.cpp src/Lexer.cpp src/SymbolTable.cpp -o src/Main.exe)",
       "Bash(echo \"EXIT: $?\")",
