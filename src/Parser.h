@@ -3,77 +3,101 @@
 
 #include "Lexer.h"
 #include "Token.h"
+#include "AST.h"
 #include <string>
+#include <vector>
 
 // =====================================================================
-// Analizador Sintactico para LP (Entregable 1 - 30%)
+// Analizador Sintactico para LP (Entregable 2 - 70%)
 // ---------------------------------------------------------------------
-// Tecnica: descenso recursivo (exigido por el PDF de especificaciones).
-// Cada funcion parseXxx() implementa UN no terminal de la gramatica LP.
-// El parser NO lee caracteres: consume tokens pidiendoselos al Lexer
-// uno por uno con getNextToken(). El contrato con el Lexer esta en
-// Lexer.h: el parser solo mira 'currentToken' y lo avanza.
+// Tecnica: descenso recursivo con 2 tokens de lookahead (necesario para
+// distinguir PRINCIPAL ('void main') de DECLARACION_FUNCION ('void id')).
 //
-// Alcance de esta fase (segun seccion 4.1 del PDF):
-//   PROGRAMA, PRINCIPAL, BLOQUE, LISTA_VARIABLES, LISTA_ID,
-//   TIPO, TIPO_BASE, DIMENSION, COMANDO -> ASIGNACION, COMPLEMENTO
-//   + deteccion de errores basicos (;, parentesis, llaves, token inesperado).
-// El resto de la gramatica (expresiones completas, if/while, scanf/println,
-// funciones, return) se agregara en el Entregable 2.
+// Cada parseXxx() implementa UN no terminal de la gramatica LP y
+// devuelve el nodo del AST correspondiente. El root final queda
+// accesible mediante getAST() tras llamar a parse().
+//
+// Alcance completo (seccion 5.1 del PDF):
+//   - Expresiones con jerarquia completa de precedencia
+//     (||, &&, comp, +-, */%, factor unario, parentesis).
+//   - LECTURA (scanf), ESCRITURA (println).
+//   - SELECCION (if/else), MIENTRAS (while).
+//   - FUNCION (declaracion + llamada) con PARAMETROS y ARGUMENTOS.
+//   - RETORNO (return EXPRESION ;).
+//   - AST serializable a texto y a Graphviz (.dot).
+//   - Recuperacion basica ante errores (panic-mode a ; o }).
 // =====================================================================
 class Parser {
 private:
-    Lexer& lexer;         // Se guarda por referencia: el parser USA al lexer, no lo posee.
-    Token currentToken;   // Token "bajo el cursor". Es la unica ventana del parser al codigo fuente.
-    int errorCount;       // Contador para reportar al final cuantos errores sintacticos hubo.
+    Lexer& lexer;
+    Token currentToken;   // Token "bajo el cursor".
+    Token nextToken;      // Lookahead extra (necesario para 'void main').
+    int errorCount;
+    Node* root;           // Raiz del AST construido durante parse().
 
-    // ----- Utilidades del parser -----
-    // Pide el siguiente token al lexer y lo guarda en currentToken.
-    // Es el equivalente del advance() del lexer, pero a nivel de tokens.
+    // ----- Utilidades -----
     void advance();
-
-    // Si el token actual es del tipo esperado, lo consume y devuelve true.
-    // Si no coincide, NO consume nada y devuelve false. Util para producciones
-    // opcionales (ej: DIMENSION -> [ num_int ] DIMENSION | epsilon).
     bool match(TokenType type);
-
-    // Como match, pero si no coincide reporta error. Se usa cuando la gramatica
-    // obliga a un token concreto (ej: tras 'main' DEBE venir '(').
+    bool check(TokenType type) const;        // mira sin consumir
     void expect(TokenType type, const std::string& nombreEsperado);
-
-    // Imprime un mensaje de error con linea, columna, lexema encontrado
-    // y lo esperado. Incrementa errorCount. No lanza excepcion para poder
-    // seguir analizando (recuperacion basica).
     void error(const std::string& esperado);
+    // Panic-mode: avanza hasta encontrar un token de sincronizacion
+    // (por defecto ';' o '}' para reanudar en el siguiente comando/bloque).
+    void synchronize();
+    // Devuelve true si currentToken puede iniciar un COMANDO.
+    bool isComandoStart() const;
+    // Devuelve true si currentToken es un TIPO_BASE (int/float/char/boolean).
+    bool isTipoBase() const;
+    // Devuelve true si currentToken puede iniciar un TIPO_RETORNO
+    // (TIPO_BASE o 'void').
+    bool isTipoRetornoStart() const;
 
-    // ----- Funciones de los no terminales (una por produccion) -----
-    // Entregable 1: solo las necesarias para declaraciones y asignaciones.
-    void parsePrograma();         // PROGRAMA -> LISTA_FUNCIONES PRINCIPAL  (en E1 solo PRINCIPAL)
-    void parsePrincipal();        // PRINCIPAL -> main ( ) BLOQUE
-    void parseBloque();           // BLOQUE -> { LISTA_VARIABLES COMANDOS }
-    void parseListaVariables();   // LISTA_VARIABLES -> TIPO id LISTA_ID ; LISTA_VARIABLES | epsilon
-    void parseListaId();          // LISTA_ID -> , id LISTA_ID | epsilon
-    void parseTipo();             // TIPO -> TIPO_BASE DIMENSION
-    void parseTipoBase();         // TIPO_BASE -> char | float | int | boolean
-    void parseDimension();        // DIMENSION -> [ num_int ] DIMENSION | epsilon
-    void parseComandos();         // COMANDOS -> COMANDO COMANDOS | epsilon
-    void parseComando();          // COMANDO -> (en E1 solo ASIGNACION; se amplia en E2)
-    void parseAsignacion();       // ASIGNACION -> id = COMPLEMENTO ;
-    void parseComplemento();      // COMPLEMENTO -> EXPRESION | FUNCION (en E1 solo expresion simple)
+    // ----- No terminales -----
+    Node* parsePrograma();
+    Node* parseDeclaracionFuncion();     // consume TIPO_RETORNO id (...) BLOQUE
+    Node* parsePrincipal();              // main () BLOQUE  (acepta 'void main' opcional)
+    Node* parseTipoRetorno();            // TIPO | void
+    Node* parseTipo();                   // TIPO_BASE DIMENSION
+    std::string parseTipoBaseLexema();   // devuelve el lexema del tipo
+    void   parseDimension(Node* tipoNode);
+    void   parseParametros(Node* parent);
+    Node*  parseBloque();
+    void   parseListaVariables(Node* bloque);
+    void   parseListaId(std::vector<std::string>& ids);
+    void   parseComandos(Node* bloque);
+    Node*  parseComando();
+    Node*  parseLectura();               // scanf
+    Node*  parseTerminoLectura();        // id DIMENSION2
+    void   parseDimension2(Node* parent);
+    Node*  parseEscritura();             // println
+    Node*  parseTerminoEscritura();
+    Node*  parseAsignacion();
+    Node*  parseComplemento();           // EXPRESION | FUNCION
+    Node*  parseSeleccion();             // if ... else ...
+    Node*  parseMientras();              // while
+    Node*  parseRetorno();               // return EXPRESION ;
+    Node*  parseFuncionCall();           // func id ( ARGUMENTOS )
+    void   parseArgumentos(Node* parent);
 
-    // Version simplificada de EXPRESION para el Entregable 1:
-    // acepta un unico id / num_int / num_dec. La jerarquia completa con
-    // precedencia (||, &&, comp, +-, */ %, factor) llega en el Entregable 2.
-    void parseExpresionSimple();
+    // Expresiones con precedencia (de menor a mayor):
+    Node* parseExpresion();              // === EXPRESION_O
+    Node* parseExpresionO();             // ||
+    Node* parseExpresionY();             // &&
+    Node* parseExpresionRelacional();    // comp  (no asociativo)
+    Node* parseExpresionAditiva();       // + -
+    Node* parseExpresionMultiplicativa();// * / %
+    Node* parseFactor();                 // SIGNO TERMINO | texto | ! FACTOR | ( EXPRESION )
+    Node* parseTermino();                // id DIMENSION2 | CONSTANTE
 
 public:
-    // Se construye con el lexer ya cargado (loadFile hecho desde main).
     explicit Parser(Lexer& lex);
+    ~Parser();
 
-    // Punto de entrada. Devuelve true si el programa es sintacticamente
-    // correcto (errorCount == 0 al terminar). Imprime "aceptado" o el
-    // numero de errores encontrados.
+    // Ejecuta el analisis. Devuelve true si no se encontraron errores.
     bool parse();
+
+    // Acceso al AST construido (dueno sigue siendo el parser; se libera en ~Parser).
+    Node* getAST() const { return root; }
 };
 
 #endif

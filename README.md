@@ -4,22 +4,22 @@ Evidencias Grupo 6
 ## Objetivo
 Implementar en C++ un compilador para el lenguaje LP, compuesto por:
 1. **Analizador léxico (Lexer)** — ya entregado (fases 1 a 3).
-2. **Analizador sintáctico (Parser)** — en curso: dos entregables (30% + 70%).
+2. **Analizador sintáctico (Parser)** — dos entregables (30% + 70%), ambos cubiertos.
 
 ## Estructura del proyecto
 ```
-src/     Código fuente (Main, Lexer, SymbolTable, Token, Parser)
-tests/   Archivos de entrada de prueba (.lp, .txt)
-docs/    Material del curso (enunciado léxico, expresiones regulares)
+src/     Código fuente (Main, Lexer, SymbolTable, Token, Parser, AST)
+tests/   Archivos de entrada de prueba (.lp, .txt, .dot generados)
+docs/    Material del curso (enunciado léxico, gramática LL(1), especificaciones)
 ```
 
-Archivos de referencia en la raíz:
+Archivos de referencia en `docs/`:
 - `Gramatica_LP_LL1.pdf` — gramática LL(1) de LP.
 - `Especificaciones_Proyecto-Analizador_Sintactico_AL.pdf` — reglas de entrega.
 
 ## Compilar
 ```
-g++ -g src/Main.cpp src/Lexer.cpp src/SymbolTable.cpp src/Parser.cpp -o src/Main.exe
+g++ -std=c++17 src/Main.cpp src/Lexer.cpp src/SymbolTable.cpp src/Parser.cpp src/AST.cpp -o src/Main.exe
 ```
 En VS Code: `Ctrl+Shift+B` ejecuta la tarea "Compilar LexLP".
 
@@ -27,47 +27,75 @@ En VS Code: `Ctrl+Shift+B` ejecuta la tarea "Compilar LexLP".
 
 ### Análisis sintáctico (modo por defecto)
 ```
-./src/Main.exe tests/valido1.lp
+./src/Main.exe tests/valido_e2_completo.lp
 ```
 Imprime si el programa es **ACEPTADO** o **RECHAZADO** y la tabla de símbolos.
 
-### Lista de tokens + análisis sintáctico
+### Banderas combinables
+| Bandera | Efecto |
+|---|---|
+| `--tokens` | Imprime la lista de tokens antes del análisis (evidencia del lexer). |
+| `--ast` | Imprime el AST con sangría por nivel tras el análisis. |
+| `--dot [salida.dot]` | Escribe el AST en formato Graphviz. Si se omite el path, usa `<archivo>.dot`. |
+
+Ejemplos:
 ```
-./src/Main.exe tests/valido1.lp --tokens
+./src/Main.exe tests/valido_e2_completo.lp --tokens --ast
+./src/Main.exe tests/valido_e2_funciones.lp --dot
+dot -Tpng tests/valido_e2_funciones.dot -o tests/valido_e2_funciones.png
 ```
-Imprime primero la lista de tokens (evidencia del lexer) y luego el resultado del parser.
 
 ## Código de salida
 - `0` → programa aceptado sintácticamente.
 - `1` → errores sintácticos o problema al abrir el archivo.
 
-## Archivos de prueba (`tests/`)
+## Archivos de prueba
 
-### Válidos
+### Entregable 1 (`src/`)
 - `valido1.lp` — ejemplo mínimo del PDF (declaraciones + asignaciones).
 - `valido2.lp` — múltiples IDs por declaración, arreglos (`float[10] notas`), varios tipos base.
-
-### Inválidos (se espera que el parser los rechace)
-- `invalido1.lp` — falta `;` al final de una declaración (ejemplo del PDF).
+- `invalido1.lp` — falta `;` al final de una declaración.
 - `invalido2.lp` — llave `{` sin cerrar.
 - `invalido3.lp` — paréntesis `(` sin cerrar en `main`.
 
-### Cobertura del Entregable 1 (según sección 4.1 del PDF)
+### Entregable 2 (`tests/`)
+- `valido_e2_completo.lp` — ejemplo integral (if/else, while, println, return) del enunciado 5.2.
+- `valido_e2_expresiones.lp` — jerarquía completa de precedencia (aritmética, unarios, `!`, `&&`, `||`, paréntesis).
+- `valido_e2_funciones.lp` — declaraciones de funciones con parámetros, llamadas (`func`), `scanf`, arreglos.
+- `invalido_e2_if.lp` — falta `)` en la condición del `if`.
+- `invalido_e2_return.lp` — `return;` sin expresión (la gramática exige `return EXPRESION ;`).
+
+### Cobertura del Entregable 1 (sección 4.1 del PDF)
 | Requisito | Dónde se cubre |
 |---|---|
 | Integración lexer→parser | `Main.cpp` + `Parser(Lexer&)` |
 | `PROGRAMA` y `PRINCIPAL` | `parsePrograma`, `parsePrincipal` |
 | `BLOQUE` con llaves | `parseBloque` |
 | Declaraciones (`TIPO`, `TIPO_BASE`, `DIMENSION`, `LISTA_VARIABLES`, `LISTA_ID`) | `parseTipo`, `parseTipoBase`, `parseDimension`, `parseListaVariables`, `parseListaId` |
-| Asignaciones básicas (`ASIGNACION`, `COMPLEMENTO`) | `parseAsignacion`, `parseComplemento` |
+| Asignaciones (`ASIGNACION`, `COMPLEMENTO`) | `parseAsignacion`, `parseComplemento` |
 | Errores: `;` faltante, paréntesis/llaves sin cerrar, token inesperado | `expect()`, `error()` |
+
+### Cobertura del Entregable 2 (sección 5.1 del PDF)
+| Requisito | Dónde se cubre |
+|---|---|
+| Expresiones con precedencia (`||`, `&&`, comp, `+-`, `*/%`) | `parseExpresionO/Y/Relacional/Aditiva/Multiplicativa` |
+| Factores y términos (id, constantes, texto, signos unarios, `!`, paréntesis) | `parseFactor`, `parseTermino` |
+| `scanf` / `println` con lista de términos | `parseLectura`, `parseEscritura`, `parseTerminoLectura/Escritura` |
+| `if` / `else` / `while` | `parseSeleccion`, `parseMientras` |
+| Funciones: declaración, parámetros, llamada (`func`), argumentos | `parseDeclaracionFuncion`, `parseParametros`, `parseFuncionCall`, `parseArgumentos` |
+| `return EXPRESION ;` | `parseRetorno` |
+| AST | `AST.h`/`AST.cpp`, nodos construidos por cada `parseXxx()`, salidas `--ast` y `--dot` |
+| Mensajes de error con ubicación y tokens esperado/encontrado | `error()` |
+| Recuperación básica para reportar varios errores | `synchronize()` (panic-mode a `;` o `}`) |
 
 ## Notas sobre la gramática LP
 - **`void` opcional antes de `main`**: la gramática formal pide `main() BLOQUE`, pero el ejemplo del PDF usa `void main()`. El parser acepta ambos.
-- **Dimensión de arreglos va con el TIPO**: en LP se escribe `float[10] notas;`, NO `float notas[10];` (ver producción `TIPO → TIPO_BASE DIMENSION`).
-- **`func` es palabra reservada**: añadido al lexer para la producción `FUNCION → func id ( ARGUMENTOS )`. Se usará recién en el Entregable 2.
-- **`return` exige expresión**: la gramática no admite `return;` solo. Se implementa en el Entregable 2.
+- **Dimensión de arreglos va con el TIPO**: en LP se escribe `float[10] notas;`, NO `float notas[10];` (producción `TIPO → TIPO_BASE DIMENSION`).
+- **`func` es palabra reservada**: añadido al lexer para la producción `FUNCION → func id ( ARGUMENTOS )`.
+- **`return` exige expresión**: la gramática no admite `return;` solo.
 - **No hay `for`**: la gramática solo define `while`.
+- **Lookahead de 2 tokens**: necesario en `PROGRAMA` para distinguir `void main` (es `PRINCIPAL`) de `void foo` (es `DECLARACION_FUNCION`).
+- **Asociatividad izquierda** en expresiones: aunque la gramática usa recursión a la derecha (`EXPRESION_ADITIVA2`, etc.), el AST se construye con asociatividad izquierda mediante bucles, lo esperado semánticamente.
 
 ## Entregas
 ### Entregables léxico (ya cerrados)
@@ -75,6 +103,6 @@ Imprime primero la lista de tokens (evidencia del lexer) y luego el resultado de
 - 22/09: ID + TEXTO + palabras reservadas + tabla de símbolos
 - 29/09: operadores + integración + lista de tokens + errores
 
-### Entregables sintáctico (en curso)
+### Entregables sintáctico
 - **13/11 — Entregable 1 (30%)**: integración lexer+parser, `main`/bloque/declaraciones/asignaciones + errores básicos.
-- **24/11 — Entregable 2 (70%)**: expresiones completas con precedencia, `if`/`else`/`while`, `scanf`/`println`, funciones, `return`, AST, mejor recuperación de errores.
+- **24/11 — Entregable 2 (70%)**: expresiones completas con precedencia, `if`/`else`/`while`, `scanf`/`println`, funciones, `return`, AST (consola + Graphviz), mejor recuperación de errores.
